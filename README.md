@@ -6,7 +6,7 @@ There are 2 scripts, `run.sh` that you can give the parameters and real trainer 
 
 
 ## Treebanks
-We collected 2 treebanks [IMST](https://github.com/UniversalDependencies/UD_Turkish-IMST) and [BOUN](https://github.com/UniversalDependencies/UD_Turkish-BOUN) from their Github repos. Then we converted conllu format to json lines. The converter script can be found under `helpers/convert_conllu_to_jsonl.py`. Exact instance format can be found under our HF repo documentation.
+We collected 2 treebanks [IMST](https://github.com/UniversalDependencies/UD_Turkish-IMST) and [BOUN](https://github.com/UniversalDependencies/UD_Turkish-BOUN) from their Github repos. Then we converted conllu format to json lines. The converter script can be found under `helpers/conllu_to_hf.py`. Exact instance format can be found under our HF repo documentation.
 
 
 ## Hugging Face
