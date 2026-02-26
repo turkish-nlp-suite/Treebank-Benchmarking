@@ -1,0 +1,12 @@
+python3 train_pos_morph.py \
+  --model dbmdz/bert-base-turkish-cased \
+  --dataset turkish-nlp-suite/Treebank-Benchmarking \
+  --config IMST \
+  --train_split train \
+  --dev_split validation \
+  --test_split test \
+  --max_length 64 \
+  --epochs 10 \
+  --batch_size 64 \
+  --lr 3e-5 \
+  --seeds 42
