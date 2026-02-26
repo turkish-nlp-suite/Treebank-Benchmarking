@@ -2,7 +2,7 @@
 
 This repo is for benchmarking Transformers on Turkish treebanks, more openly POS-DEP-MORPH tasks. 
 
-There are 2 scripts, `run.sh` that you can give the parameters and real trainer script `train_pos_dep_morph.py`. The second one is based on HF code, Transformer, Tokenizer and Trainer code as well as `datasets` to pull the treebanks from HF. Our [HF repo](https://huggingface.co/datasets/BayanDuygu/Treebank-Benchmarking) includes 2 treebanks as well, BOUN and IMST treebanks for Turkish. 
+There are 2 scripts, `run.sh` that you can give the parameters and real trainer script `train_pos_dep_morph.py`. The second one is based on HF code, Transformer, Tokenizer and Trainer code as well as `datasets` to pull the treebanks from HF. Our [HF repo](https://huggingface.co/datasets/turkish-nlp-suite/Treebank-Benchmarking) includes 2 treebanks as well, BOUN and IMST treebanks for Turkish. 
 
 
 ## Treebanks
@@ -14,4 +14,4 @@ Please find our datasets and their stats at our [HF repo](https://huggingface.co
 
 ## Benchmarking
 
-Simply run `run.sh` , it will run the given model on both treebanks. We benchmarked BERTurk on both treebanks, please find the numbers on our HF repo. 
+Simply make a  `./run.sh` , it will download the data from HF and run the given model on them. We benchmarked BERTurk on both treebanks, please find the numbers on our HF repo. 
