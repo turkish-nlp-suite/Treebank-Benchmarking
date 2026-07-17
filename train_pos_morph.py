@@ -81,7 +81,6 @@ class PosDepDataset(Dataset):
         )
         word_ids = enc.word_ids()
 
-        # POS labels aligned to first subword; -100 elsewhere
         pos_labels = []
         prev_w = None
         for wi in word_ids:
@@ -93,7 +92,6 @@ class PosDepDataset(Dataset):
                 pos_labels.append(-100)
             prev_w = wi
 
-        # Map word -> first subword token index
         word_to_tok = {}
         for i, wi in enumerate(word_ids):
             if wi is None:
@@ -113,17 +111,16 @@ class PosDepDataset(Dataset):
 
         for w in active_word_idx:
             tok_idx = word_to_tok[w]
-            head_w = ex["heads"][w]  # 0..n (0=root)
+            head_w = ex["heads"][w]
             if head_w == 0:
                 head_tok = cls_index
             else:
-                hw = head_w - 1  # UD heads are 1-based for words
+                hw = head_w - 1
                 head_tok = word_to_tok.get(hw, None)
             if head_tok is not None:
                 arc_targets[tok_idx] = head_tok
                 rel_targets[tok_idx] = self.rel2id[ex["rels"][w]]
 
-        # Morphology labels per attribute, aligned to first subword
         if self.schema is not None:
             morph_labels = {}
             y_words_by_attr = {a: [] for a in self.schema.attrs}
@@ -331,7 +328,9 @@ def default_data_collator(tokenizer, schema: Optional[MorphSchema] = None):
 # Evaluation
 # -----------------------
 @torch.no_grad()
-def evaluate(model, dataset, tokenizer, id2upos, id2rel, device, schema: Optional[MorphSchema] = None):
+# FIX: device parametresini kaldırdık, cihaz bilgisini doğrudan modelin üstünden çekeceğiz.
+def evaluate(model, dataset, tokenizer, id2upos, id2rel, schema: Optional[MorphSchema] = None):
+    device = next(model.parameters()).device # FIX: Model hangi donanımdaysa datayı oraya yolla.
     model.eval()
     loader = torch.utils.data.DataLoader(
         dataset, batch_size=8, shuffle=False,
@@ -400,9 +399,6 @@ def evaluate(model, dataset, tokenizer, id2upos, id2rel, device, schema: Optiona
 # HF loading helpers
 # -----------------------
 def hf_to_examples(ds_split):
-    """
-    Convert a HuggingFace Dataset split to the list-of-dicts format expected by PosDepDataset.
-    """
     cols = ds_split.column_names
     required = ["tokens", "upos", "heads", "rels", "feats"]
     missing = [c for c in required if c not in cols]
@@ -449,14 +445,12 @@ def main():
     ap.add_argument("--output_dir", default="posdep_out")
     ap.add_argument("--morph_loss_weight", type=float, default=1.0)
 
-    # if you need private datasets
     ap.add_argument("--use_auth_token", action="store_true")
 
     args = ap.parse_args()
 
     ds = load_dataset(args.dataset, args.config, token=True if args.use_auth_token else None)
 
-    # Handle split names robustly
     available = list(ds.keys())
     for sp in [args.train_split, args.dev_split, args.test_split]:
         if sp not in ds:
@@ -466,7 +460,6 @@ def main():
     dev = hf_to_examples(ds[args.dev_split])
     test = hf_to_examples(ds[args.test_split])
 
-    # Label spaces
     upos_set = sorted({t for ex in train + dev + test for t in ex["upos"]})
     rel_set = sorted({r for ex in train + dev + test for r in ex["rels"]})
     upos2id = {u: i for i, u in enumerate(upos_set)}
@@ -474,9 +467,7 @@ def main():
     rel2id = {r: i for i, r in enumerate(rel_set)}
     id2rel = {i: r for r, i in rel2id.items()}
 
-    # Morphology schema from train FEATS
     schema = build_schema([ex["feats"] for ex in train])
-
 
     tok_name = args.tokenizer or args.model
     tokenizer = AutoTokenizer.from_pretrained(tok_name, use_fast=True)
@@ -485,7 +476,20 @@ def main():
     dev_ds = PosDepDataset(dev, tokenizer, upos2id, rel2id, schema=schema, max_length=args.max_length)
     test_ds = PosDepDataset(test, tokenizer, upos2id, rel2id, schema=schema, max_length=args.max_length)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    steps_per_epoch = len(train_ds) // (args.batch_size * args.grad_accum)
+    if len(train_ds) % (args.batch_size * args.grad_accum) != 0:
+        steps_per_epoch += 1
+    total_steps = steps_per_epoch * args.epochs
+    calculated_warmup_steps = int(total_steps * args.warmup_ratio)
+
+    # FIX: Cihaz belirleme kodunu MPS'i de kapsayacak şekilde güvenli hale getirdik.
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
     results = []
 
     for seed in args.seeds:
@@ -508,7 +512,7 @@ def main():
             num_train_epochs=args.epochs,
             learning_rate=args.lr,
             weight_decay=args.weight_decay,
-            warmup_ratio=args.warmup_ratio,
+            warmup_steps=calculated_warmup_steps,
             eval_strategy="epoch",
             save_strategy="epoch",
             save_total_limit=1,
@@ -527,13 +531,14 @@ def main():
             args=training_args,
             train_dataset=train_ds,
             eval_dataset=dev_ds,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             data_collator=collate_fn,
         )
         trainer.train()
 
-        dev_metrics = evaluate(model, dev_ds, tokenizer, id2upos, id2rel, device, schema=schema)
-        test_metrics = evaluate(model, test_ds, tokenizer, id2upos, id2rel, device, schema=schema)
+        # FIX: Evaluate çağrılarından 'device' argümanını sildik, içeride modelden otomatik okuyacak.
+        dev_metrics = evaluate(model, dev_ds, tokenizer, id2upos, id2rel, schema=schema)
+        test_metrics = evaluate(model, test_ds, tokenizer, id2upos, id2rel, schema=schema)
 
         os.makedirs(training_args.output_dir, exist_ok=True)
         with open(os.path.join(training_args.output_dir, "dev_metrics.json"), "w", encoding="utf-8") as f:
@@ -545,7 +550,6 @@ def main():
         print(f"Seed {seed} test:", test_metrics)
         results.append(test_metrics)
 
-    # Aggregate across seeds
     pos_accs = [r["pos_acc"] for r in results]
     uass = [r["uas"] for r in results]
     lass = [r["las"] for r in results]
