@@ -522,6 +522,9 @@ def main():
             fp16=args.fp16,
             bf16=args.bf16,
             report_to=["none"],
+            seed=seed,
+            data_seed=seed,
+            remove_unused_columns=False,
         )
 
         collate_fn = default_data_collator(tokenizer, schema=schema)
